@@ -8,8 +8,9 @@
  * `Counter`: add a reset method. ([#2678](https://github.com/OpenZeppelin/openzeppelin-contracts/pull/2678))
  * Tokens: Wrap definitely safe subtractions in `unchecked` blocks. 
  * `Math`: Add a `ceilDiv` method for performing ceiling division.
+ * Add an `interface` folder containing solidity interfaces to final ERCs. ([#2517](https://github.com/OpenZeppelin/openzeppelin-contracts/pull/2517))
 
- ### Breaking Changes
+### Breaking Changes
  
  * `ERC20FlashMint` is no longer a Draft ERC. ([#2673](https://github.com/OpenZeppelin/openzeppelin-contracts/pull/2673)))
  
