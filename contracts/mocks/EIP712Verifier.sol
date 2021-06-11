@@ -5,13 +5,7 @@ pragma solidity ^0.8.0;
 import "../utils/cryptography/draft-EIP712.sol";
 import "../utils/cryptography/ECDSA.sol";
 
-contract EIP712External is EIP712 {
-    constructor(string memory name, string memory version) EIP712(name, version) {}
-
-    function domainSeparator() external view returns (bytes32) {
-        return _domainSeparatorV4();
-    }
-
+abstract contract EIP712Verifier is EIP712 {
     function verify(
         bytes memory signature,
         address signer,
@@ -23,9 +17,5 @@ contract EIP712External is EIP712 {
         );
         address recoveredSigner = ECDSA.recover(digest, signature);
         require(recoveredSigner == signer);
-    }
-
-    function getChainId() external view returns (uint256) {
-        return block.chainid;
     }
 }
