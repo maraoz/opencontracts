@@ -11,7 +11,7 @@ pragma solidity ^0.8.0;
 library ECDSA {
     /**
      * @dev Returns the address that signed a hashed message (`hash`) with
-     * `signature`. This address can then be used for verification purposes.
+     * `signature` or error string. This address can then be used for verification purposes.
      *
      * The `ecrecover` EVM opcode allows for malleable (non-unique) signatures:
      * this function rejects them by requiring the `s` value to be in the lower
@@ -27,7 +27,7 @@ library ECDSA {
      * - with https://web3js.readthedocs.io/en/v1.3.4/web3-eth-accounts.html#sign[Web3.js]
      * - with https://docs.ethers.io/v5/api/signer/#Signer-signMessage[ethers]
      */
-    function recover(bytes32 hash, bytes memory signature) internal pure returns (address) {
+    function tryRecover(bytes32 hash, bytes memory signature) internal pure returns (address, string memory) {
         // Check the signature length
         // - case 65: r,s,v signature (standard)
         // - case 64: r,vs signature (cf https://eips.ethereum.org/EIPS/eip-2098) _Available since v4.1._
@@ -42,7 +42,7 @@ library ECDSA {
                 s := mload(add(signature, 0x40))
                 v := byte(0, mload(add(signature, 0x60)))
             }
-            return recover(hash, v, r, s);
+            return tryRecover(hash, v, r, s);
         } else if (signature.length == 64) {
             bytes32 r;
             bytes32 vs;
@@ -52,42 +52,80 @@ library ECDSA {
                 r := mload(add(signature, 0x20))
                 vs := mload(add(signature, 0x40))
             }
-            return recover(hash, r, vs);
+            return tryRecover(hash, r, vs);
         } else {
-            revert("ECDSA: invalid signature length");
+            return (address(0), "ECDSA: invalid signature length");
         }
     }
 
     /**
-     * @dev Overload of {ECDSA-recover} that receives the `r` and `vs` short-signature fields separately.
+     * @dev Returns the address that signed a hashed message (`hash`) with
+     * `signature`. This address can then be used for verification purposes.
+     *
+     * The `ecrecover` EVM opcode allows for malleable (non-unique) signatures:
+     * this function rejects them by requiring the `s` value to be in the lower
+     * half order, and the `v` value to be either 27 or 28.
+     *
+     * IMPORTANT: `hash` _must_ be the result of a hash operation for the
+     * verification to be secure: it is possible to craft signatures that
+     * recover to arbitrary addresses for non-hashed data. A safe way to ensure
+     * this is by receiving a hash of the original message (which may otherwise
+     * be too long), and then calling {toEthSignedMessageHash} on it.
+     */
+    function recover(bytes32 hash, bytes memory signature) internal pure returns (address) {
+        (address recovered, string memory error) = tryRecover(hash, signature);
+        if (bytes(error).length > 0) {
+            revert(error);
+        }
+        return recovered;
+    }
+
+    /**
+     * @dev Overload of {ECDSA-tryRecover} that receives the `r` and `vs` short-signature fields separately.
      *
      * See https://eips.ethereum.org/EIPS/eip-2098[EIP-2098 short signatures]
      *
      * _Available since v4.2._
      */
-    function recover(
+    function tryRecover(
         bytes32 hash,
         bytes32 r,
         bytes32 vs
-    ) internal pure returns (address) {
+    ) internal pure returns (address, string memory) {
         bytes32 s;
         uint8 v;
         assembly {
             s := and(vs, 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
             v := add(shr(255, vs), 27)
         }
-        return recover(hash, v, r, s);
+        return tryRecover(hash, v, r, s);
     }
 
     /**
-     * @dev Overload of {ECDSA-recover} that receives the `v`, `r` and `s` signature fields separately.
+     * @dev Overload of {ECDSA-recover} that receives the `r and `vs` short-signature fields separately.
      */
     function recover(
+        bytes32 hash,
+        bytes32 r,
+        bytes32 vs
+    ) internal pure returns (address) {
+        (address recovered, string memory error) = tryRecover(hash, r, vs);
+        if (bytes(error).length > 0) {
+            revert(error);
+        }
+        return recovered;
+    }
+
+    /**
+     * @dev Overload of {ECDSA-tryRecover} that receives the `v`,
+     * `r` and `s` signature fields separately.
+     */
+    function tryRecover(
         bytes32 hash,
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) internal pure returns (address) {
+    ) internal pure returns (address, string memory) {
         // EIP-2 still allows signature malleability for ecrecover(). Remove this possibility and make the signature
         // unique. Appendix F in the Ethereum Yellow paper (https://ethereum.github.io/yellowpaper/paper.pdf), defines
         // the valid range for s in (281): 0 < s < secp256k1n ÷ 2 + 1, and for v in (282): v ∈ {27, 28}. Most
@@ -97,17 +135,37 @@ library ECDSA {
         // with 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141 - s1 and flip v from 27 to 28 or
         // vice versa. If your library also generates signatures with 0/1 for v instead 27/28, add 27 to v to accept
         // these malleable signatures as well.
-        require(
-            uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
-            "ECDSA: invalid signature 's' value"
-        );
-        require(v == 27 || v == 28, "ECDSA: invalid signature 'v' value");
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) {
+            return (address(0), "ECDSA: invalid signature 's' value");
+        }
+        if (v != 27 && v != 28) {
+            return (address(0), "ECDSA: invalid signature 'v' value");
+        }
 
         // If the signature is valid (and not malleable), return the signer address
         address signer = ecrecover(hash, v, r, s);
-        require(signer != address(0), "ECDSA: invalid signature");
+        if (signer == address(0)) {
+            return (address(0), "ECDSA: invalid signature");
+        }
 
-        return signer;
+        return (signer, "");
+    }
+
+    /**
+     * @dev Overload of {ECDSA-recover} that receives the `v`,
+     * `r` and `s` signature fields separately.
+     */
+    function recover(
+        bytes32 hash,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal pure returns (address) {
+        (address recovered, string memory error) = tryRecover(hash, v, r, s);
+        if (bytes(error).length > 0) {
+            revert(error);
+        }
+        return recovered;
     }
 
     /**
